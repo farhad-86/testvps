@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
 Telegram VPS Monitoring Bot
-A simple bot that sends comprehensive VPS statistics.
-To install dependencies, run:
-pip install python-telegram-bot psutil aiohttp
+نسخة محسّنة لتجنب مشاكل asyncio
 """
 
 import asyncio
@@ -18,26 +17,27 @@ from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
-# ==================================================================
-# == إعدادات البوت - BOT CONFIGURATION ==
-# ==================================================================
-BOT_TOKEN = "8062387392:AAHq6rc0Tw9Dih5ZLcGgueoHYSQ1jPLW3fk"
-ADMIN_CHAT_ID = 1689039862
-# ==================================================================
+# ===================================================================
+# إعدادات البوت - BOT CONFIGURATION
+# ===================================================================
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_التوكن_هنا")
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", 0))
 
+# إعداد التسجيل لعرض معلومات التشغيل والأخطاء
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# ===================================================================
+# كلاس مراقبة VPS
+# ===================================================================
 class VPSMonitor:
     def __init__(self):
         self.start_time = datetime.datetime.now()
 
     def bytes_to_human(self, bytes_value: int) -> str:
-        if bytes_value is None:
-            return "N/A"
         try:
             power = 1024
             n = 0
@@ -46,153 +46,108 @@ class VPSMonitor:
                 bytes_value /= power
                 n += 1
             return f"{bytes_value:.2f} {power_labels[n]}B"
-        except Exception:
+        except:
             return "N/A"
 
     def get_system_info(self) -> dict:
+        info = {
+            'نظام التشغيل': f"{platform.system()} {platform.release()}",
+            'إصدار النظام': platform.version(),
+            'معمارية النظام': platform.machine(),
+            'اسم المضيف': platform.node(),
+            'المعالج': platform.processor() or "غير معروف"
+        }
         try:
-            system_info = {
-                'نظام التشغيل': f"{platform.system()} {platform.release()}",
-                'إصدار النظام': platform.version(),
-                'معمارية النظام': platform.machine(),
-                'اسم المضيف': platform.node(),
-                'المعالج': platform.processor() or "غير معروف"
-            }
-            try:
-                cpu_info_output = subprocess.check_output(['lscpu'], universal_newlines=True)
-                for line in cpu_info_output.split('\n'):
-                    if 'Model name' in line:
-                        system_info['نموذج المعالج'] = line.split(':')[1].strip()
-                        break
-            except Exception:
-                pass
-            return system_info
-        except Exception as e:
-            logger.error(f"خطأ في جمع معلومات النظام: {e}")
-            return {}
+            output = subprocess.check_output(['lscpu'], universal_newlines=True)
+            for line in output.split('\n'):
+                if 'Model name' in line:
+                    info['نموذج المعالج'] = line.split(':')[1].strip()
+                    break
+        except:
+            pass
+        return info
 
     def get_cpu_info(self) -> dict:
-        try:
-            cpu_info = {
-                'نسبة استخدام المعالج': f"{psutil.cpu_percent(interval=1):.1f}%",
-                'عدد النوى الفيزيائية': psutil.cpu_count(logical=False),
-                'عدد النوى المنطقية': psutil.cpu_count(logical=True),
-            }
-            cpu_freq = psutil.cpu_freq()
-            if cpu_freq:
-                cpu_info.update({
-                    'تردد المعالج الحالي': f"{cpu_freq.current:.0f} MHz",
-                    'أقصى تردد': f"{cpu_freq.max:.0f} MHz",
-                    'أقل تردد': f"{cpu_freq.min:.0f} MHz"
-                })
-            return cpu_info
-        except Exception as e:
-            logger.error(f"خطأ في جمع معلومات المعالج: {e}")
-            return {}
+        cpu_info = {
+            'نسبة استخدام المعالج': f"{psutil.cpu_percent(interval=1):.1f}%",
+            'عدد النوى الفيزيائية': psutil.cpu_count(logical=False),
+            'عدد النوى المنطقية': psutil.cpu_count(logical=True)
+        }
+        freq = psutil.cpu_freq()
+        if freq:
+            cpu_info.update({
+                'تردد المعالج الحالي': f"{freq.current:.0f} MHz",
+                'أقصى تردد': f"{freq.max:.0f} MHz",
+                'أقل تردد': f"{freq.min:.0f} MHz"
+            })
+        return cpu_info
 
     def get_memory_info(self) -> dict:
-        try:
-            memory = psutil.virtual_memory()
-            swap = psutil.swap_memory()
-            return {
-                'إجمالي الذاكرة': self.bytes_to_human(memory.total),
-                'الذاكرة المستخدمة': self.bytes_to_human(memory.used),
-                'الذاكرة المتاحة': self.bytes_to_human(memory.available),
-                'نسبة استخدام الذاكرة': f"{memory.percent:.1f}%",
-                'Swap الإجمالي': self.bytes_to_human(swap.total),
-                'Swap المستخدم': self.bytes_to_human(swap.used),
-                'نسبة استخدام Swap': f"{swap.percent:.1f}%"
-            }
-        except Exception as e:
-            logger.error(f"خطأ في جمع معلومات الذاكرة: {e}")
-            return {}
+        mem = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        return {
+            'إجمالي الذاكرة': self.bytes_to_human(mem.total),
+            'الذاكرة المستخدمة': self.bytes_to_human(mem.used),
+            'الذاكرة المتاحة': self.bytes_to_human(mem.available),
+            'نسبة استخدام الذاكرة': f"{mem.percent:.1f}%",
+            'Swap الإجمالي': self.bytes_to_human(swap.total),
+            'Swap المستخدم': self.bytes_to_human(swap.used),
+            'نسبة استخدام Swap': f"{swap.percent:.1f}%"
+        }
 
     def get_disk_info(self) -> dict:
-        disk_info = {}
-        try:
-            partitions = psutil.disk_partitions()
-            for i, p in enumerate(partitions, 1):
-                try:
-                    usage = psutil.disk_usage(p.mountpoint)
-                    disk_info[f'القرص {i} ({p.device})'] = (
-                        f"الحجم: {self.bytes_to_human(usage.total)}, "
-                        f"المستخدم: {self.bytes_to_human(usage.used)} ({usage.percent}%)"
-                    )
-                except (PermissionError, FileNotFoundError):
-                    continue
-            disk_io = psutil.disk_io_counters()
-            if disk_io:
-                disk_info['إحصائيات I/O'] = (
-                    f"قراءة: {self.bytes_to_human(disk_io.read_bytes)}, "
-                    f"كتابة: {self.bytes_to_human(disk_io.write_bytes)}"
-                )
-            return disk_info
-        except Exception as e:
-            logger.error(f"خطأ في جمع معلومات القرص: {e}")
-            return disk_info
+        disks = {}
+        for i, p in enumerate(psutil.disk_partitions(), 1):
+            try:
+                usage = psutil.disk_usage(p.mountpoint)
+                disks[f'القرص {i} ({p.device})'] = f"الحجم: {self.bytes_to_human(usage.total)}, المستخدم: {self.bytes_to_human(usage.used)} ({usage.percent}%)"
+            except:
+                continue
+        io = psutil.disk_io_counters()
+        if io:
+            disks['إحصائيات I/O'] = f"قراءة: {self.bytes_to_human(io.read_bytes)}, كتابة: {self.bytes_to_human(io.write_bytes)}"
+        return disks
 
     def get_network_info(self) -> dict:
-        try:
-            net_io = psutil.net_io_counters()
-            network_info = {
-                'البيانات المرسلة': self.bytes_to_human(net_io.bytes_sent),
-                'البيانات المستقبلة': self.bytes_to_human(net_io.bytes_recv),
-            }
-            interfaces = psutil.net_if_addrs()
-            for name, addrs in interfaces.items():
-                for addr in addrs:
-                    if addr.family == 2:
-                        network_info[f'واجهة {name}'] = f"IP: {addr.address}"
-                        break
-            return network_info
-        except Exception as e:
-            logger.error(f"خطأ في جمع معلومات الشبكة: {e}")
-            return {}
+        net = {}
+        io = psutil.net_io_counters()
+        net['البيانات المرسلة'] = self.bytes_to_human(io.bytes_sent)
+        net['البيانات المستقبلة'] = self.bytes_to_human(io.bytes_recv)
+        for name, addrs in psutil.net_if_addrs().items():
+            for addr in addrs:
+                if addr.family == 2:  # AF_INET
+                    net[f'واجهة {name}'] = f"IP: {addr.address}"
+                    break
+        return net
 
     def get_process_info(self) -> dict:
-        try:
-            processes = [p.info for p in psutil.process_iter(['name', 'cpu_percent', 'memory_percent', 'pid'])]
-            top_cpu = sorted(processes, key=lambda p: p['cpu_percent'], reverse=True)[:5]
-            process_info = {
-                'إجمالي العمليات': len(psutil.pids()),
-                'أهم العمليات (CPU)': "\n".join([
-                    f" - `{p['name']}` (CPU: {p['cpu_percent']:.1f}%, RAM: {p['memory_percent']:.1f}%)" for p in top_cpu
-                ])
-            }
-            return process_info
-        except Exception as e:
-            logger.error(f"خطأ في جمع معلومات العمليات: {e}")
-            return {}
+        processes = [p.info for p in psutil.process_iter(['name', 'cpu_percent', 'memory_percent'])]
+        top_cpu = sorted(processes, key=lambda x: x['cpu_percent'], reverse=True)[:5]
+        return {
+            'إجمالي العمليات': len(psutil.pids()),
+            'أهم العمليات (CPU)': "\n".join([f" - `{p['name']}` CPU: {p['cpu_percent']:.1f}%, RAM: {p['memory_percent']:.1f}%" for p in top_cpu])
+        }
 
     def get_uptime_info(self) -> dict:
-        try:
-            boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
-            system_uptime = datetime.datetime.now() - boot_time
-            bot_uptime = datetime.datetime.now() - self.start_time
-            return {
-                'مدة تشغيل النظام': str(system_uptime).split('.')[0],
-                'مدة تشغيل البوت': str(bot_uptime).split('.')[0],
-                'الوقت الحالي': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-        except Exception as e:
-            logger.error(f"خطأ في جمع معلومات وقت التشغيل: {e}")
-            return {}
+        boot = datetime.datetime.fromtimestamp(psutil.boot_time())
+        return {
+            'مدة تشغيل النظام': str(datetime.datetime.now() - boot).split('.')[0],
+            'مدة تشغيل البوت': str(datetime.datetime.now() - self.start_time).split('.')[0],
+            'الوقت الحالي': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
 
     def get_temperature_info(self) -> dict:
         temp_info = {}
         if hasattr(psutil, "sensors_temperatures"):
             try:
                 temps = psutil.sensors_temperatures()
-                if not temps:
-                    return {}
                 for name, entries in temps.items():
                     for entry in entries:
                         label = entry.label or 'الأساسي'
                         temp_info[f'{name} - {label}'] = f"{entry.current:.1f}°C"
-                return temp_info
-            except Exception:
-                return {}
-        return {}
+            except:
+                pass
+        return temp_info
 
     async def get_full_report(self) -> str:
         sections = {
@@ -205,20 +160,24 @@ class VPSMonitor:
             '⚙️ *معلومات العمليات*': self.get_process_info(),
             '🌡️ *درجات الحرارة*': self.get_temperature_info(),
         }
-        report_parts = [f"📊 *تقرير حالة السيرفر - {platform.node()}*"]
+        parts = [f"📊 *تقرير حالة السيرفر - {platform.node()}*"]
         for title, data in sections.items():
             if data:
-                report_parts.append(f"\n{title}")
+                parts.append(f"\n{title}")
                 for key, value in data.items():
                     if "\n" in str(value):
-                         report_parts.append(f" - *{key}:*\n{value}")
+                        parts.append(f" - *{key}:*\n{value}")
                     else:
-                        report_parts.append(f" - *{key}:* `{value}`")
-        return "\n".join(report_parts)
+                        parts.append(f" - *{key}:* `{value}`")
+        return "\n".join(parts)
 
+
+# ===================================================================
+# كلاس بوت التليجرام
+# ===================================================================
 class TelegramVPSBot:
     def __init__(self, token: str, admin_chat_id: int):
-        if not token or not isinstance(admin_chat_id, int):
+        if not token or not admin_chat_id:
             raise ValueError("Token and Admin Chat ID must be set correctly.")
         self.token = token
         self.admin_chat_id = admin_chat_id
@@ -228,15 +187,14 @@ class TelegramVPSBot:
     async def is_admin(self, update: Update) -> bool:
         if update.effective_user.id == self.admin_chat_id:
             return True
-        else:
-            await update.message.reply_text("⛔ *غير مصرح لك باستخدام هذا البوت*", parse_mode=ParseMode.MARKDOWN)
-            logger.warning(f"محاولة وصول غير مصرح بها من المستخدم: {update.effective_user.id}")
-            return False
+        await update.message.reply_text("⛔ *غير مصرح لك*", parse_mode=ParseMode.MARKDOWN)
+        logger.warning(f"محاولة وصول غير مصرح بها: {update.effective_user.id}")
+        return False
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await self.is_admin(update):
             return
-        await update.message.reply_text("🔄 جاري جمع بيانات السيرفر، يرجى الانتظار...", parse_mode=ParseMode.MARKDOWN)
+        await update.message.reply_text("🔄 جاري جمع بيانات السيرفر...", parse_mode=ParseMode.MARKDOWN)
         report = await self.monitor.get_full_report()
         if len(report) > 4096:
             for i in range(0, len(report), 4096):
@@ -245,19 +203,15 @@ class TelegramVPSBot:
             await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
 
     async def send_startup_message(self):
+        bot = Bot(token=self.token)
+        startup_msg = (
+            f"✅ *البوت بدأ العمل بنجاح!*\n\n"
+            f"🖥️ *السيرفر:* `{platform.node()}`\n"
+            f"⏰ *وقت البدء:* `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
+            f"📊 استخدم `/status` لعرض الإحصائيات الكاملة."
+        )
         try:
-            bot = Bot(token=self.token)
-            startup_msg = (
-                f"✅ *البوت بدأ العمل بنجاح!*\n\n"
-                f"🖥️ *السيرفر:* `{platform.node()}`\n"
-                f"⏰ *وقت البدء:* `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
-                f"📊 استخدم `/status` لعرض الإحصائيات الكاملة."
-            )
-            await bot.send_message(
-                chat_id=self.admin_chat_id,
-                text=startup_msg,
-                parse_mode=ParseMode.MARKDOWN
-            )
+            await bot.send_message(chat_id=self.admin_chat_id, text=startup_msg, parse_mode=ParseMode.MARKDOWN)
             logger.info("تم إرسال رسالة بدء التشغيل بنجاح.")
         except Exception as e:
             logger.error(f"فشل في إرسال رسالة بدء التشغيل: {e}")
@@ -265,27 +219,24 @@ class TelegramVPSBot:
     def run(self):
         self.application.add_handler(CommandHandler("start", self.status_command))
         self.application.add_handler(CommandHandler("status", self.status_command))
-        asyncio.create_task(self.send_startup_message())
         logger.info("البوت يعمل الآن...")
         self.application.run_polling()
 
-def main():
-    if not BOT_TOKEN:
-        logger.critical("❌ خطأ فادح: متغير BOT_TOKEN غير موجود. يرجى إضافته.")
+
+# ===================================================================
+# دالة main مع asyncio.run
+# ===================================================================
+async def main_async():
+    if not BOT_TOKEN or not ADMIN_CHAT_ID:
+        logger.critical("❌ BOT_TOKEN أو ADMIN_CHAT_ID غير محدد!")
         return
-    if not ADMIN_CHAT_ID:
-        logger.critical("❌ خطأ فادح: متغير ADMIN_CHAT_ID غير صحيح. يرجى تعديله.")
-        return
-    try:
-        bot = TelegramVPSBot(BOT_TOKEN, ADMIN_CHAT_ID)
-        bot.run()
-    except ValueError as e:
-        logger.critical(f"خطأ في الإعدادات: {e}")
-    except Exception as e:
-        logger.error(f"حدث خطأ غير متوقع عند تشغيل البوت: {e}")
+    bot = TelegramVPSBot(BOT_TOKEN, ADMIN_CHAT_ID)
+    await bot.send_startup_message()
+    bot.run()
+
 
 if __name__ == "__main__":
     try:
-        main()
+        asyncio.run(main_async())
     except KeyboardInterrupt:
         logger.info("تم إيقاف البوت بواسطة المستخدم.")
