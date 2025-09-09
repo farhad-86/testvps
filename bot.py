@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
-Telegram VPS Monitoring Bot
-نسخة محسّنة لتجنب مشاكل asyncio مع التوكن والادمن مدمجين
-"""
-
 import asyncio
 import psutil
 import platform
@@ -16,22 +11,16 @@ from telegram import Bot, Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.constants import ParseMode
 
-# ===================================================================
-# إعدادات البوت - BOT CONFIGURATION
-# ===================================================================
 BOT_TOKEN = "8062387392:AAHq6rc0Tw9Dih5ZLcGgueoHYSQ1jPLW3fk"
 ADMIN_CHAT_ID = 1689039862
 
-# إعداد التسجيل لعرض معلومات التشغيل والأخطاء
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# ===================================================================
-# كلاس مراقبة VPS
-# ===================================================================
+# ---------------- VPS Monitor ----------------
 class VPSMonitor:
     def __init__(self):
         self.start_time = datetime.datetime.now()
@@ -48,7 +37,7 @@ class VPSMonitor:
         except:
             return "N/A"
 
-    def get_system_info(self) -> dict:
+    def get_system_info(self):
         info = {
             'نظام التشغيل': f"{platform.system()} {platform.release()}",
             'إصدار النظام': platform.version(),
@@ -66,7 +55,7 @@ class VPSMonitor:
             pass
         return info
 
-    def get_cpu_info(self) -> dict:
+    def get_cpu_info(self):
         cpu_info = {
             'نسبة استخدام المعالج': f"{psutil.cpu_percent(interval=1):.1f}%",
             'عدد النوى الفيزيائية': psutil.cpu_count(logical=False),
@@ -81,7 +70,7 @@ class VPSMonitor:
             })
         return cpu_info
 
-    def get_memory_info(self) -> dict:
+    def get_memory_info(self):
         mem = psutil.virtual_memory()
         swap = psutil.swap_memory()
         return {
@@ -94,7 +83,7 @@ class VPSMonitor:
             'نسبة استخدام Swap': f"{swap.percent:.1f}%"
         }
 
-    def get_disk_info(self) -> dict:
+    def get_disk_info(self):
         disks = {}
         for i, p in enumerate(psutil.disk_partitions(), 1):
             try:
@@ -107,19 +96,19 @@ class VPSMonitor:
             disks['إحصائيات I/O'] = f"قراءة: {self.bytes_to_human(io.read_bytes)}, كتابة: {self.bytes_to_human(io.write_bytes)}"
         return disks
 
-    def get_network_info(self) -> dict:
+    def get_network_info(self):
         net = {}
         io = psutil.net_io_counters()
         net['البيانات المرسلة'] = self.bytes_to_human(io.bytes_sent)
         net['البيانات المستقبلة'] = self.bytes_to_human(io.bytes_recv)
         for name, addrs in psutil.net_if_addrs().items():
             for addr in addrs:
-                if addr.family == 2:  # AF_INET
+                if addr.family == 2:
                     net[f'واجهة {name}'] = f"IP: {addr.address}"
                     break
         return net
 
-    def get_process_info(self) -> dict:
+    def get_process_info(self):
         processes = [p.info for p in psutil.process_iter(['name', 'cpu_percent', 'memory_percent'])]
         top_cpu = sorted(processes, key=lambda x: x['cpu_percent'], reverse=True)[:5]
         return {
@@ -127,7 +116,7 @@ class VPSMonitor:
             'أهم العمليات (CPU)': "\n".join([f" - `{p['name']}` CPU: {p['cpu_percent']:.1f}%, RAM: {p['memory_percent']:.1f}%" for p in top_cpu])
         }
 
-    def get_uptime_info(self) -> dict:
+    def get_uptime_info(self):
         boot = datetime.datetime.fromtimestamp(psutil.boot_time())
         return {
             'مدة تشغيل النظام': str(datetime.datetime.now() - boot).split('.')[0],
@@ -135,7 +124,7 @@ class VPSMonitor:
             'الوقت الحالي': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
 
-    def get_temperature_info(self) -> dict:
+    def get_temperature_info(self):
         temp_info = {}
         if hasattr(psutil, "sensors_temperatures"):
             try:
@@ -148,7 +137,7 @@ class VPSMonitor:
                 pass
         return temp_info
 
-    async def get_full_report(self) -> str:
+    async def get_full_report(self):
         sections = {
             '🖥️ *معلومات النظام*': self.get_system_info(),
             '⏰ *معلومات التشغيل*': self.get_uptime_info(),
@@ -170,12 +159,9 @@ class VPSMonitor:
                         parts.append(f" - *{key}:* `{value}`")
         return "\n".join(parts)
 
-
-# ===================================================================
-# كلاس بوت التليجرام
-# ===================================================================
+# ---------------- Telegram Bot ----------------
 class TelegramVPSBot:
-    def __init__(self, token: str, admin_chat_id: int):
+    def __init__(self, token, admin_chat_id):
         self.token = token
         self.admin_chat_id = admin_chat_id
         self.monitor = VPSMonitor()
@@ -185,7 +171,6 @@ class TelegramVPSBot:
         if update.effective_user.id == self.admin_chat_id:
             return True
         await update.message.reply_text("⛔ *غير مصرح لك*", parse_mode=ParseMode.MARKDOWN)
-        logger.warning(f"محاولة وصول غير مصرح بها: {update.effective_user.id}")
         return False
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -195,42 +180,29 @@ class TelegramVPSBot:
         report = await self.monitor.get_full_report()
         if len(report) > 4096:
             for i in range(0, len(report), 4096):
-                await update.message.reply_text(report[i:i + 4096], parse_mode=ParseMode.MARKDOWN)
+                await update.message.reply_text(report[i:i+4096], parse_mode=ParseMode.MARKDOWN)
         else:
             await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
 
     async def send_startup_message(self):
         bot = Bot(token=self.token)
-        msg = (
-            f"✅ *البوت بدأ العمل بنجاح!*\n\n"
-            f"🖥️ *السيرفر:* `{platform.node()}`\n"
-            f"⏰ *وقت البدء:* `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
-            f"📊 استخدم `/status` لعرض الإحصائيات الكاملة."
-        )
-        try:
-            await bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode=ParseMode.MARKDOWN)
-            logger.info("تم إرسال رسالة بدء التشغيل بنجاح.")
-        except Exception as e:
-            logger.error(f"فشل في إرسال رسالة بدء التشغيل: {e}")
+        msg = f"✅ *البوت بدأ العمل بنجاح!*\n🖥️ `{platform.node()}`\n⏰ `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n📊 استخدم /status"
+        await bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode=ParseMode.MARKDOWN)
 
     def run(self):
         self.application.add_handler(CommandHandler("start", self.status_command))
         self.application.add_handler(CommandHandler("status", self.status_command))
-        logger.info("البوت يعمل الآن...")
+        # تشغيل رسالة بدء التشغيل في الخلفية
+        self.application.create_task(self.send_startup_message())
         self.application.run_polling()
 
-
-# ===================================================================
-# main
-# ===================================================================
-async def main_async():
+# ---------------- Main ----------------
+def main():
+    if not BOT_TOKEN or not ADMIN_CHAT_ID:
+        logger.critical("❌ BOT_TOKEN أو ADMIN_CHAT_ID غير محدد!")
+        return
     bot = TelegramVPSBot(BOT_TOKEN, ADMIN_CHAT_ID)
-    await bot.send_startup_message()
     bot.run()
 
-
 if __name__ == "__main__":
-    try:
-        asyncio.run(main_async())
-    except KeyboardInterrupt:
-        logger.info("تم إيقاف البوت بواسطة المستخدم.")
+    main()
