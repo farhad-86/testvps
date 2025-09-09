@@ -165,7 +165,16 @@ class TelegramVPSBot:
         self.token = token
         self.admin_chat_id = admin_chat_id
         self.monitor = VPSMonitor()
-        self.application = Application.builder().token(self.token).build()
+        self.application = Application.builder().token(self.token).post_init(self.on_startup).build()
+
+    async def on_startup(self, app: Application):
+        try:
+            bot = Bot(token=self.token)
+            msg = f"✅ *البوت بدأ العمل بنجاح!*\n🖥️ `{platform.node()}`\n⏰ `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n📊 استخدم /status"
+            await bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode=ParseMode.MARKDOWN)
+            logger.info("تم إرسال رسالة بدء التشغيل بنجاح.")
+        except Exception as e:
+            logger.error(f"فشل إرسال رسالة بدء التشغيل: {e}")
 
     async def is_admin(self, update: Update) -> bool:
         if update.effective_user.id == self.admin_chat_id:
@@ -184,16 +193,9 @@ class TelegramVPSBot:
         else:
             await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
 
-    async def send_startup_message(self):
-        bot = Bot(token=self.token)
-        msg = f"✅ *البوت بدأ العمل بنجاح!*\n🖥️ `{platform.node()}`\n⏰ `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n📊 استخدم /status"
-        await bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode=ParseMode.MARKDOWN)
-
     def run(self):
         self.application.add_handler(CommandHandler("start", self.status_command))
         self.application.add_handler(CommandHandler("status", self.status_command))
-        # تشغيل رسالة بدء التشغيل في الخلفية
-        self.application.create_task(self.send_startup_message())
         self.application.run_polling()
 
 # ---------------- Main ----------------
