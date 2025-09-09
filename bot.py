@@ -209,4 +209,83 @@ class VPSMonitor:
         for title, data in sections.items():
             if data:
                 report_parts.append(f"\n{title}")
-                for
+                for key, value in data.items():
+                    if "\n" in str(value):
+                         report_parts.append(f" - *{key}:*\n{value}")
+                    else:
+                        report_parts.append(f" - *{key}:* `{value}`")
+        return "\n".join(report_parts)
+
+class TelegramVPSBot:
+    def __init__(self, token: str, admin_chat_id: int):
+        if not token or not isinstance(admin_chat_id, int):
+            raise ValueError("Token and Admin Chat ID must be set correctly.")
+        self.token = token
+        self.admin_chat_id = admin_chat_id
+        self.monitor = VPSMonitor()
+        self.application = Application.builder().token(self.token).build()
+
+    async def is_admin(self, update: Update) -> bool:
+        if update.effective_user.id == self.admin_chat_id:
+            return True
+        else:
+            await update.message.reply_text("⛔ *غير مصرح لك باستخدام هذا البوت*", parse_mode=ParseMode.MARKDOWN)
+            logger.warning(f"محاولة وصول غير مصرح بها من المستخدم: {update.effective_user.id}")
+            return False
+
+    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not await self.is_admin(update):
+            return
+        await update.message.reply_text("🔄 جاري جمع بيانات السيرفر، يرجى الانتظار...", parse_mode=ParseMode.MARKDOWN)
+        report = await self.monitor.get_full_report()
+        if len(report) > 4096:
+            for i in range(0, len(report), 4096):
+                await update.message.reply_text(report[i:i + 4096], parse_mode=ParseMode.MARKDOWN)
+        else:
+            await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
+
+    async def send_startup_message(self):
+        try:
+            bot = Bot(token=self.token)
+            startup_msg = (
+                f"✅ *البوت بدأ العمل بنجاح!*\n\n"
+                f"🖥️ *السيرفر:* `{platform.node()}`\n"
+                f"⏰ *وقت البدء:* `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
+                f"📊 استخدم `/status` لعرض الإحصائيات الكاملة."
+            )
+            await bot.send_message(
+                chat_id=self.admin_chat_id,
+                text=startup_msg,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            logger.info("تم إرسال رسالة بدء التشغيل بنجاح.")
+        except Exception as e:
+            logger.error(f"فشل في إرسال رسالة بدء التشغيل: {e}")
+
+    def run(self):
+        self.application.add_handler(CommandHandler("start", self.status_command))
+        self.application.add_handler(CommandHandler("status", self.status_command))
+        asyncio.create_task(self.send_startup_message())
+        logger.info("البوت يعمل الآن...")
+        self.application.run_polling()
+
+def main():
+    if not BOT_TOKEN:
+        logger.critical("❌ خطأ فادح: متغير BOT_TOKEN غير موجود. يرجى إضافته.")
+        return
+    if not ADMIN_CHAT_ID:
+        logger.critical("❌ خطأ فادح: متغير ADMIN_CHAT_ID غير صحيح. يرجى تعديله.")
+        return
+    try:
+        bot = TelegramVPSBot(BOT_TOKEN, ADMIN_CHAT_ID)
+        bot.run()
+    except ValueError as e:
+        logger.critical(f"خطأ في الإعدادات: {e}")
+    except Exception as e:
+        logger.error(f"حدث خطأ غير متوقع عند تشغيل البوت: {e}")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("تم إيقاف البوت بواسطة المستخدم.")
