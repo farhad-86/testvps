@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  telegram-vps-bot:
+    build: .
+    container_name: vps-monitoring-bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_CHAT_ID=${ADMIN_CHAT_ID}
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host:ro
+    privileged: true
+    pid: host
+    network_mode: host
