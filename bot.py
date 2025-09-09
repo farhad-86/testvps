@@ -3,14 +3,13 @@
 
 """
 Telegram VPS Monitoring Bot
-نسخة محسّنة لتجنب مشاكل asyncio
+نسخة محسّنة لتجنب مشاكل asyncio مع التوكن والادمن مدمجين
 """
 
 import asyncio
 import psutil
 import platform
 import datetime
-import os
 import subprocess
 import logging
 from telegram import Bot, Update
@@ -20,8 +19,8 @@ from telegram.constants import ParseMode
 # ===================================================================
 # إعدادات البوت - BOT CONFIGURATION
 # ===================================================================
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "ضع_التوكن_هنا")
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", 0))
+BOT_TOKEN = "8062387392:AAHq6rc0Tw9Dih5ZLcGgueoHYSQ1jPLW3fk"
+ADMIN_CHAT_ID = 1689039862
 
 # إعداد التسجيل لعرض معلومات التشغيل والأخطاء
 logging.basicConfig(
@@ -177,8 +176,6 @@ class VPSMonitor:
 # ===================================================================
 class TelegramVPSBot:
     def __init__(self, token: str, admin_chat_id: int):
-        if not token or not admin_chat_id:
-            raise ValueError("Token and Admin Chat ID must be set correctly.")
         self.token = token
         self.admin_chat_id = admin_chat_id
         self.monitor = VPSMonitor()
@@ -204,14 +201,14 @@ class TelegramVPSBot:
 
     async def send_startup_message(self):
         bot = Bot(token=self.token)
-        startup_msg = (
+        msg = (
             f"✅ *البوت بدأ العمل بنجاح!*\n\n"
             f"🖥️ *السيرفر:* `{platform.node()}`\n"
             f"⏰ *وقت البدء:* `{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
             f"📊 استخدم `/status` لعرض الإحصائيات الكاملة."
         )
         try:
-            await bot.send_message(chat_id=self.admin_chat_id, text=startup_msg, parse_mode=ParseMode.MARKDOWN)
+            await bot.send_message(chat_id=self.admin_chat_id, text=msg, parse_mode=ParseMode.MARKDOWN)
             logger.info("تم إرسال رسالة بدء التشغيل بنجاح.")
         except Exception as e:
             logger.error(f"فشل في إرسال رسالة بدء التشغيل: {e}")
@@ -224,12 +221,9 @@ class TelegramVPSBot:
 
 
 # ===================================================================
-# دالة main مع asyncio.run
+# main
 # ===================================================================
 async def main_async():
-    if not BOT_TOKEN or not ADMIN_CHAT_ID:
-        logger.critical("❌ BOT_TOKEN أو ADMIN_CHAT_ID غير محدد!")
-        return
     bot = TelegramVPSBot(BOT_TOKEN, ADMIN_CHAT_ID)
     await bot.send_startup_message()
     bot.run()
